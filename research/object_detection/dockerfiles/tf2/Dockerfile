@@ -2,7 +2,13 @@ FROM tensorflow/tensorflow:2.2.0-gpu
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Install apt dependencies
+# Remove unnecessary CUDA lists as Apple Silicon does not use CUDA
+RUN rm -f /etc/apt/sources.list.d/cuda*.list
+
+# Remove any existing CMake (if installed via apt)
+RUN apt-get purge --auto-remove -y cmake
+
+# Install dependencies
 RUN apt-get update && apt-get install -y \
     git \
     gpg-agent \
@@ -11,31 +17,37 @@ RUN apt-get update && apt-get install -y \
     python3-pil \
     python3-lxml \
     python3-tk \
-    wget
+    wget \
+    build-essential \
+    curl
 
-# Install gcloud and gsutil commands
-# https://cloud.google.com/sdk/docs/quickstart-debian-ubuntu
-RUN export CLOUD_SDK_REPO="cloud-sdk-$(lsb_release -c -s)" && \
-    echo "deb http://packages.cloud.google.com/apt $CLOUD_SDK_REPO main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && \
-    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - && \
+# Install CMake (ARM compatible version via apt)
+RUN apt-get update && apt-get install -y cmake
+
+# Install Google Cloud SDK (optional, only needed if you're interacting with Google Cloud)
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && \
+    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - && \
     apt-get update -y && apt-get install google-cloud-sdk -y
 
-# Add new user to avoid running as root
+# Create a non-root user to avoid running as root
 RUN useradd -ms /bin/bash tensorflow
 USER tensorflow
 WORKDIR /home/tensorflow
 
-# Copy this version of of the model garden into the image
+# Copy the model garden into the image
 COPY --chown=tensorflow . /home/tensorflow/models
 
-# Compile protobuf configs
+# Compile protobuf configurations for object detection
 RUN (cd /home/tensorflow/models/research/ && protoc object_detection/protos/*.proto --python_out=.)
 WORKDIR /home/tensorflow/models/research/
 
+# Set up TensorFlow object detection API
 RUN cp object_detection/packages/tf2/setup.py ./
 ENV PATH="/home/tensorflow/.local/bin:${PATH}"
 
-RUN python -m pip install -U pip
+# Upgrade pip and install necessary Python packages
+RUN python -m pip install --upgrade pip
 RUN python -m pip install .
 
-ENV TF_CPP_MIN_LOG_LEVEL 3
+# Set TensorFlow log level to avoid unnecessary logs
+ENV TF_CPP_MIN_LOG_LEVEL=3
