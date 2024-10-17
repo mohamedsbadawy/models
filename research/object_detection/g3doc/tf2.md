@@ -20,7 +20,10 @@ git clone https://github.com/tensorflow/models.git
 ```
 
 ### Docker Installation
-
+# not sure if this issue would persist, but add this to the docker file to prevent it from giving yout exit error 100
+```bash
+RUN rm /etc/apt/sources.list.d/cuda*.list
+```
 ```bash
 # From the root of the git repository
 docker build -f research/object_detection/dockerfiles/tf2/Dockerfile -t od .
